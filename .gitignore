@@ -4,3 +4,8 @@ node_modules/
 !.env.example
 *.tsbuildinfo
 .DS_Store
+
+# Generated OCR engines; prepare-ocr copies them from the installed dependency.
+public/ocr/*.js
+public/ocr/*.wasm
+public/ocr/worker.LICENSE.txt

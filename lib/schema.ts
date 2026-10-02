@@ -8,6 +8,7 @@ export const routeSchema = z.enum(["corporate", "founder", "family"]);
 export const memberSchema = z.object({
   id: z.string().max(80), relationship: z.enum(["self", "spouse", "child"]),
   name: z.string().trim().min(1).max(100), nationality: z.string().trim().min(1).max(60),
+  birthDate: z.union([dateSchema, z.literal("")]).default(""),
   expiry: dateSchema, passportNumber: z.string().max(30).default(""), confirmed: z.boolean(),
 });
 export const profileSchema = z.object({
@@ -42,11 +43,14 @@ export const changeSchema = z.object({
   id: z.string(), baseVersion: z.number(), reason: z.string(), plan: planSchema,
   diffs: z.array(z.object({ taskId: z.string(), title: z.string(), before: dateSchema, after: dateSchema })),
   maintainedGoal: z.boolean(), nextAction: z.string(), createdAt: z.string(),
+  details: z.array(z.string()).default([]), profile: profileSchema.optional(),
 });
 export type PlanChange = z.infer<typeof changeSchema>;
 export const caseSchema = z.object({
   id: z.string(), route: routeSchema.nullable(), sponsor: z.enum(["employer", "self", "undecided"]),
   members: z.array(memberSchema).max(12), profile: profileSchema, messages: z.array(messageSchema).max(200),
+  guideMessages: z.array(messageSchema).max(100).default([]),
+  needsReview: z.boolean().default(false),
   plan: planSchema.nullable(), changes: z.array(changeSchema).max(50),
 });
 export type RelocationCase = z.infer<typeof caseSchema>;

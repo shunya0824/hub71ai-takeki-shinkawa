@@ -18,7 +18,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [storageError, setStorageError] = useState("");
   useEffect(() => {
     try { const saved = localStorage.getItem(storageKey); if (saved) setData(deserializeCase(saved)); }
-    catch { setStorageError("Saved data could not be read. You can start a new demo or reset the saved data."); }
+    catch { setStorageError("Saved data could not be read. Start a new move from Settings to clear it."); }
     setReady(true);
     fetch("/api/status").then(response => response.json()).then(result => setMode(result.mode === "live" ? "live" : "demo")).catch(() => {});
   }, []);

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { demoCase } from "../lib/demo";
-import { addDays, applyChange, blockers, replan, summarizeCosts, toggleTask, validatePlan } from "../lib/planner";
+import { addDays, applyChange, blockers, replan, refreshPlan, generatePlan, summarizeCosts, toggleTask, validatePlan } from "../lib/planner";
 import { deserializeCase, serializeCase, toApiCase } from "../lib/storage";
 import { dateSchema } from "../lib/schema";
 
@@ -69,8 +69,8 @@ test("unconfirmed cost ranges stay counted as unknown, with monthly and one-time
   assert.equal(costs[0].min, 2800);
   assert.equal(costs[0].max, 5300);
   assert.equal(costs[0].unknown, 6);
-  assert.equal(costs[1].min, 6350);
-  assert.equal(costs[1].max, 10650);
+  assert.equal(costs[1].min, 6660);
+  assert.equal(costs[1].max, 9720);
 });
 test("saved cases and planning requests exclude passport numbers; completion survives a reload", () => {
   const data = demoCase();
@@ -81,4 +81,41 @@ test("saved cases and planning requests exclude passport numbers; completion sur
   assert.equal(deserializeCase(saved).plan!.tasks[0].status, "done");
   assert.equal(toApiCase(data).members[0].passportNumber, "");
   assert.equal(data.members[0].passportNumber, "SECRET-PASSPORT-NUMBER");
+});
+
+
+test("all route and sponsorship combinations produce valid plans including mixed founder families", () => {
+  for (const route of ["corporate", "founder", "family"] as const) for (const sponsor of ["employer", "self", "undecided"] as const) {
+    const data = { ...demoCase(), route, sponsor, plan: null };
+    const plan = generatePlan(data);
+    validatePlan(plan);
+    assert.ok(plan.tasks.some(task => task.id === "family"));
+    assert.ok(plan.tasks.some(task => task.id === "school"));
+    assert.equal(plan.tasks.some(task => task.id === "licence"), route === "founder");
+    assert.equal(plan.tasks.some(task => task.id === "employer"), sponsor === "employer");
+    assert.equal(plan.tasks.some(task => task.id === "pathway"), sponsor !== "employer");
+  }
+});
+test("budget and school updates preserve finished work and expose scope and cost changes", () => {
+  const data = demoCase(); data.plan = toggleTask(data.plan!, "documents");
+  const change = refreshPlan(data, { ...data.profile, budget: 10000, school: "Not needed" });
+  assert.equal(change.plan.tasks.some(task => task.id === "school"), false);
+  assert.ok(change.details.some(detail => detail.startsWith("Removed")));
+  assert.ok(change.details.some(detail => detail.startsWith("Updated budget")));
+  assert.deepEqual(change.plan.tasks.find(task => task.id === "documents"), data.plan.tasks.find(task => task.id === "documents"));
+  assert.equal(change.profile!.budget, 10000);
+  const newer = toggleTask(data.plan, "stay");
+  assert.throws(() => applyChange(newer, change), /changed/);
+  validatePlan(change.plan);
+});
+test("adding and removing family updates scope while retaining completed family work", () => {
+  const data = demoCase(); data.plan = generatePlan({ ...data, members: [data.members[0]], plan: null });
+  const addition = refreshPlan(data);
+  assert.ok(addition.details.some(detail => detail.startsWith("Added:")));
+  data.plan = addition.plan;
+  data.members = [data.members[0]];
+  const removal = refreshPlan(data);
+  assert.equal(removal.plan.tasks.some(task => task.id === "family"), false);
+  assert.equal(removal.plan.tasks.some(task => task.id === "school"), false);
+  validatePlan(removal.plan);
 });

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { caseSchema, dateSchema, planSchema, profileSchema, type ProfileField } from "@/lib/schema";
-import { nextQuestion, generatePlan, validatePlan, replan, today } from "@/lib/planner";
-import { aiEnabled, consult, interpretChange, personalizePlan, readPassport } from "@/lib/ai";
-import { demoMember } from "@/lib/demo";
+import { nextQuestion, generatePlan, validatePlan, replan, refreshPlan, today } from "@/lib/planner";
+import { aiEnabled, askGuide, consult, interpretChange, personalizePlan } from "@/lib/ai";
+import { localGuide } from "@/lib/guide";
 import { failure, limitRequest, readBody } from "@/lib/http";
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -18,28 +18,20 @@ export async function GET(_request: Request, context: { params: Promise<{ action
 }
 export async function POST(request: Request, context: { params: Promise<{ action: string }> }) {
   const { action } = await context.params;
-  if (!["ocr", "chat", "plan", "replan"].includes(action)) return Response.json({ error: "Not found." }, { status: 404 });
+  if (!["ocr", "chat", "plan", "replan", "guide"].includes(action)) return Response.json({ error: "Not found." }, { status: 404 });
+  if (action === "ocr") return Response.json({error:"Read passport photos on your device."},{status:410});
   if (!limitRequest(request)) return Response.json({ error: "Too many requests. Please wait one minute and retry." }, { status: 429 });
   if (process.env.NODE_ENV === "development" && request.headers.get("x-demo-failure") === "1") return Response.json({ error: "Simulated connection failure. Your input is safe. Turn off the failure simulation and retry." }, { status: 503 });
   try {
     const body = await readBody(request, action === "ocr" ? 3000000 : 200000);
     const mode = aiEnabled() ? "live" : "demo";
-    if (action === "ocr") {
-      const input = z.object({ consent: z.literal(true), image: z.string().max(2800000).optional(), fixture: z.boolean().optional() }).parse(body);
-      if (input.fixture) return Response.json({ mode: "demo", candidate: demoMember, warnings: ["Synthetic specimen data. Check and correct every field before confirming."] });
-      if (!input.image || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(input.image)) throw new Error("Upload a PNG, JPEG, or WebP image under 2 MB.");
-      if (!aiEnabled()) throw new Error("Image reading needs an OpenAI API key. Use the synthetic specimen to try the demo.");
-      const result = await readPassport(input.image);
-      const expiry = dateSchema.safeParse(result.expiry);
-      return Response.json({ mode, candidate: { ...demoMember, name: result.name || "", nationality: result.nationality || "", passportNumber: result.passportNumber || "", expiry: expiry.success ? expiry.data : "", confirmed: false }, warnings: result.warnings });
-    }
     if (action === "chat") {
       const input = z.object({ data: caseSchema, field: z.enum(fields), message: z.string().trim().min(1).max(2000), defer: z.boolean().optional() }).parse(body);
       const profile = structuredClone(input.data.profile);
       let answer: string; let citations: string[] = [];
       let value: string | null = input.message; let deferred = input.defer || /^(later|i don'?t know|not sure|skip|後で|わからない)$/i.test(input.message);
       if (aiEnabled() && !deferred) { const result = await consult(input.data, input.field, input.message); answer = result.answer; value = result.value; deferred = result.deferred; citations = result.sourceIds; }
-      else answer = deferred ? "That's okay. I've marked this for follow-up and will make the assumption visible in your plan." : "Thanks, I've captured that. Let's keep shaping your move.";
+      else answer = deferred ? "We can come back to that." : "Got it. Let's keep going.";
       if (deferred) { profile.deferred = [...new Set([...profile.deferred, input.field])]; }
       else if (value !== null) {
         if (input.field === "arrival") { const date = dateSchema.safeParse(value); if (!date.success || date.data < today()) throw new Error("Please enter an arrival date today or later, using YYYY-MM-DD."); profile.arrival = date.data; }
@@ -56,8 +48,34 @@ export async function POST(request: Request, context: { params: Promise<{ action
       if (data.profile.arrival && data.profile.arrival < today()) throw new Error("Choose a future arrival date before generating a plan.");
       if (data.members.some(member => member.expiry <= (data.profile.arrival || today()))) throw new Error("A member's passport expires before arrival. Please review member information.");
       let plan = generatePlan(data);
-      if (aiEnabled()) plan = validatePlan(await personalizePlan(plan, data.profile));
+      if (aiEnabled()) plan = validatePlan(await personalizePlan(plan, data));
       return Response.json({ mode, plan });
+    }
+    if (action === "guide") {
+      const input = z.object({ data: caseSchema, message: z.string().trim().min(1).max(2000), refresh: z.boolean().optional() }).parse(body);
+      if (input.data.plan) validatePlan(input.data.plan);
+      const intent = input.refresh ? { kind: "refresh" as const, answer: "Here's the plan for your updated people.", sourceIds: [] } : aiEnabled() ? await askGuide(input.data, input.message) : localGuide(input.data, input.message);
+      let proposal;
+      if (["delay", "arrival", "profile", "refresh"].includes(intent.kind)) {
+        if (!input.data.plan) throw new Error("Create your plan before changing it.");
+        if (intent.kind === "refresh") proposal = refreshPlan(input.data);
+        else if ("taskId" in intent && "days" in intent && intent.kind === "delay") {
+          const change = changeInput.parse({ kind: "delay", taskId: intent.taskId, days: intent.days });
+          proposal = replan(input.data.plan, change);
+        } else if ("arrival" in intent && intent.kind === "arrival") {
+          const change = changeInput.parse({ kind: "arrival", arrival: intent.arrival });
+          if (change.kind !== "arrival" || change.arrival < today()) throw new Error("Choose an arrival date today or later.");
+          proposal = replan(input.data.plan, change);
+          proposal.profile = { ...input.data.profile, arrival: change.arrival };
+        } else if ("budget" in intent && intent.kind === "profile") {
+          const updates = Object.fromEntries((["budget", "housing", "school", "health"] as const).flatMap(field => intent[field] !== null ? [[field, intent[field]]] : []));
+          if (!Object.keys(updates).length) return Response.json({ answer: "What would you like to change?", sourceIds: [] });
+          if (intent.budget !== null && intent.budget <= 0) throw new Error("Enter a monthly budget above AED 0.");
+          const profile = profileSchema.parse({ ...input.data.profile, ...updates, deferred: input.data.profile.deferred.filter(field => !(field in updates)) });
+          proposal = refreshPlan(input.data, profile);
+        }
+      }
+      return Response.json({ answer: intent.answer, sourceIds: intent.sourceIds, ...(proposal ? { proposal } : {}) });
     }
     const input = z.object({ plan: planSchema, change: changeInput.optional(), message: z.string().max(2000).optional() }).parse(body);
     validatePlan(input.plan);
@@ -69,7 +87,7 @@ export async function POST(request: Request, context: { params: Promise<{ action
         change = changeInput.parse(intent);
       } else {
         const match = input.message.match(/(?:delay|delayed|遅れ|遅延).*?(\d+)\s*(?:days?|日)/i) || input.message.match(/(\d+)\s*(?:days?|日).*?(?:delay|delayed|遅れ|遅延)/i);
-        if (!match) return Response.json({ mode, clarification: "In demo mode, use the delay or arrival controls below. Free-form change interpretation becomes available when an API key is configured." });
+        if (!match) return Response.json({ mode, clarification: "Which step would you like to change? Tell me the new date or number of extra days." });
         const matches: [string, RegExp][] = [["documents", /document|書類/i], ["school", /school|学校/i], ["housing", /housing|home|住居/i], ["residency", /residency|medical|居住|健康/i], ["bank", /bank|銀行/i], ["stay", /temporary|hotel|宿泊/i], ["employer", /employer|HR|雇用/i]];
         const matchedTask = matches.find(([id, pattern]) => pattern.test(input.message!) && input.plan.tasks.some(task => task.id === id));
         if (!matchedTask) return Response.json({ mode, clarification: "Which step is delayed? Select it in the quick change controls below." });
