@@ -1,62 +1,62 @@
 # DiveAbuDhabi
 
-Next.js App Router + TypeScript のアブダビ移住支援アプリ。英語UIで、仕事・創業・個人／家族の3ルートに対応しています。会社スポンサー、自己スポンサー、未定のいずれでも計画を作れます。
+An Abu Dhabi relocation planning app built with Next.js App Router and TypeScript. The English interface supports three routes: employment, starting a business, and moving as an individual or family. Plans support employer sponsorship, self-sponsorship, and undecided sponsorship.
 
-## 起動
+## Getting started
 
-Node.js 20.9 以上が必要です。
+Requires Node.js 20.9 or later.
 
 ```sh
 npm install
 npm run dev
 ```
 
-[ローカルアプリ](http://127.0.0.1:3000) を開き、ルート選択→本人・家族の登録→相談→計画へ進みます。未定の質問は後で回答できます。
+Open the [local app](http://127.0.0.1:3000), choose a route, add yourself and any family members, complete the consultation, and create your plan. You can defer questions and answer them later.
 
-## パスポートOCR
+## Passport OCR
 
-Tesseract.jsとMRZ解析をブラウザ内で実行します。APIキーは不要で、写真は外部APIへ送信しません。エンジンと英語モデルも自サイトから配信します。
+Tesseract.js and machine-readable zone (MRZ) parsing run in the browser. No API key is required, and photos are not sent to external APIs. The OCR engine and English recognition model are served by the app itself.
 
-写真選択→読取→名前・国籍・生年月日・有効期限の確認→確定の流れです。読取結果は編集できる入力欄へ反映され、誤読や空欄は手動修正できます。国籍はMRZと写真のNationality欄から読み取り、プルダウンへ反映します。誤りがあれば国の一覧から選び直せます。番号は入力や保存を求めません。写真は読み取り後に破棄します。
+Select a photo, scan it, review the name, nationality, date of birth, and expiry date, then confirm. Results populate editable fields so you can correct errors or fill in missing values. Nationality is read from the MRZ and the photo's Nationality field, then selected in a country dropdown. You can choose another country if needed. Passport numbers are neither requested nor stored. Photos are discarded after scanning.
 
-写真の傾き、反射、不鮮明さによって部分的な読み取りになる場合があります。MRZの日付はチェック桁を検証し、検証できない値を確定情報として扱いません。画像はGitや自動テストのfixtureに含めません。
+Tilted, reflective, or blurry photos may produce partial results. MRZ dates are checked against their check digits; values that fail validation are left for manual correction. Uploaded passport photos are not included in Git or automated test fixtures.
 
-`npm install`、`npm run dev`、`npm run build` でOCR実行ファイルを `public/ocr/` に配置します。学習モデルの出典とライセンスは [public/ocr/README.md](public/ocr/README.md) にあります。
+`npm install`, `npm run dev`, and `npm run build` prepare the OCR runtime files in `public/ocr/`. Model sources and licensing are documented in [public/ocr/README.md](public/ocr/README.md).
 
-## AIガイド
+## AI guide
 
-`.env.local` にキーを設定し、開発サーバーを再起動します。このファイルはGit対象外です。
+Set your key in `.env.local` and restart the development server. This file is excluded from Git.
 
 ```dotenv
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-OpenAI Responses APIの構造化出力を使い、相談、計画の説明、質問回答、変更意図の解釈を行います。キー未設定でもルールによる相談・計画生成と、APIで検索したナレッジノートによる回答が動きます。キー設定後のAPIエラーは画面から再試行できます。
+The OpenAI Responses API uses structured outputs for consultations, plan descriptions, answers, and interpreting requested changes. Without a key, rule-based consultations and plan generation still work, along with answers from knowledge notes retrieved through the app's API. Failed API requests can be retried from the interface.
 
-キーはサーバーだけで使用します。`store: false` を指定し、パスポート写真や番号は送信しません。ナレッジは `knowledge/sources.json` から質問に関連するノートを検索します。出典情報は内部に保持し、画面は短い回答に絞っています。
+The key is used only on the server. Requests set `store: false` and exclude passport photos and numbers. Relevant knowledge notes are retrieved from `knowledge/sources.json`. Source references are retained internally while the interface presents concise answers.
 
-## 実装済み
+## Implemented features
 
-- 全3ルートとスポンサー別の計画。創業＋家族＋学校を組み合わせた計画
-- 本人・家族の追加、編集、削除、ブラウザ内OCR、読取結果の手動修正
-- 不足項目を聞く相談、回答保留、保存と再開
-- 上から追える縦型タイムライン。書類・担当・費用は詳細を展開
-- 同じページのガイドでナレッジ回答、遅延・到着日・予算・住居・学校の変更相談
-- 変更案のプレビューと適用、完了状態とタスクIDの維持、古い変更案の拒否
-- メンバーやルート変更後の計画更新
-- 予算に応じた住居・光熱費の配分、初期費用と月額費用の分離、支払い目標日。合計・内訳・タスク詳細・ガイドは単一の金額を表示し、金額幅と未設定件数は非表示
-- オレンジのテーマ、ワードマーク、大きい文字、スマホ表示
+- Plans for all three routes and sponsorship options, including founders moving with family and children who need schools
+- Adding, editing, and removing people; browser-based passport OCR with editable results
+- Consultations that ask for missing information, allow deferred answers, and support saving and resuming
+- A vertical timeline with expandable documents, owners, and costs
+- A guide on the same page for knowledge questions and changes to delays, arrival dates, budgets, housing, and schools
+- Change previews and application, preserved completion status and task IDs, and rejection of stale proposals
+- Plan updates after changes to people or routes
+- Housing and utility allocations based on the monthly budget, separate moving and monthly costs, and target payment dates. Totals, breakdowns, task details, and guide answers use single amounts without ranges or counts of unpriced items
+- An orange theme, a wordmark, large typography, and mobile layouts
 
-計画金額は既存のレンジの中間値を1 AED単位に丸めて表示し、合計は項目ごとの表示額を足します。金額のない項目は費用欄と内訳から省き、保存済みの計画にも同じ表示を適用します。住居・光熱費の金額は入力予算からの配分で、相場や公式料金ではありません。日程は準備の目標日です。
+Planning amounts use the midpoint of existing ranges, rounded to the nearest AED. Totals sum the displayed item amounts. Unpriced items are omitted from cost fields and breakdowns, including in saved plans. Housing and utility amounts are allocations from the entered budget rather than market quotes or official fees. Dates are preparation targets.
 
-音声、共有・端末間同期、公開運用、条件別の制度・料金データの充実は後続です。OpenAI接続の実検証には利用可能なキーが必要です。
+Voice, sharing, cross-device sync, production deployment, and more detailed eligibility and fee data are planned for later. Testing the live OpenAI integration requires a valid API key.
 
-## 保存と削除
+## Storage and deletion
 
-確認済みのメンバー情報、プロフィール、会話、計画、進捗、変更履歴を同じブラウザのlocalStorageへ保存します。写真とパスポート番号は保存しません。画面右上の設定から「Start a new move」でリセットできます。
+Confirmed member details, profiles, conversations, plans, progress, and change history are stored in the same browser's localStorage. Photos and passport numbers are not stored. To reset, open settings in the top-right corner and select **Start a new move**.
 
-## 検証
+## Validation
 
 ```sh
 npm run typecheck
@@ -64,22 +64,22 @@ npm run test
 npm run build
 ```
 
-単体テストは全ルート、遅延伝播、完了状態、到着日変更、家族・学校・予算の更新、version競合、費用区分、番号除外、ナレッジ検索、架空MRZの解析、国籍の独立読取と発行国との区別を確認します。
+Unit tests cover all routes, delay propagation, completion status, arrival changes, family, school and budget updates, version conflicts, cost categories, passport number exclusion, knowledge retrieval, fictional MRZ parsing, and reading nationality independently of the issuing country.
 
-開発サーバー起動中のAPIスモークテスト:
+Run API smoke tests while the development server is running:
 
 ```sh
 npm run test:api
 ```
 
-## 構成
+## Project structure
 
-- `components/`：オンボーディング、タイムライン、ガイド
-- `lib/browser-ocr.ts`、`lib/passport.ts`：ブラウザ内OCRとMRZ解析
-- `lib/planner.ts`：計画生成、依存関係、再計画、条件変更
-- `lib/guide.ts`、`lib/knowledge.ts`：変更意図とナレッジ検索
-- `lib/ai.ts`：サーバー専用のOpenAI接続
-- `lib/schema.ts`、`lib/storage.ts`：データ契約、ブラウザ保存
-- `knowledge/sources.json`：出典と確認日を持つノート
+- `components/`: onboarding, timeline, and guide
+- `lib/browser-ocr.ts`, `lib/passport.ts`: browser OCR and MRZ parsing
+- `lib/planner.ts`: plan generation, dependencies, replanning, and preference changes
+- `lib/guide.ts`, `lib/knowledge.ts`: change intent and knowledge retrieval
+- `lib/ai.ts`: server-only OpenAI integration
+- `lib/schema.ts`, `lib/storage.ts`: data contracts and browser storage
+- `knowledge/sources.json`: notes with sources and verification dates
 
-匿名APIには入力サイズと単一プロセス内のレート制限があります。公開運用ではアクセス制御、共有ストレージの制限、制度・費用データの検証、保持・削除の運用を整備します。
+Anonymous APIs enforce input size limits and rate limits within a single process. Production deployment will require access controls, shared-storage rate limits, verification of eligibility and fee data, and data retention and deletion procedures.
