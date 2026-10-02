@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { demoCase } from "../lib/demo";
+import { profileSchema } from "../lib/schema";
 const base = process.env.API_BASE_URL || "http://127.0.0.1:3000/api";
 async function post(action: string, body: unknown, headers: Record<string,string> = {}) {
   const response = await fetch(`${base}/${action}`, { method:"POST",headers:{"Content-Type":"application/json",...headers},body:JSON.stringify(body) });
@@ -8,6 +9,21 @@ async function post(action: string, body: unknown, headers: Record<string,string
 async function main() {
 const status = await (await fetch(`${base}/status`)).json();
 assert.ok(["demo", "live"].includes(status.mode));
+if (process.env.RUN_LIVE_CHAT_CHECKS === "1") {
+  assert.equal(status.mode, "live", "Live consultation checks require a configured API key.");
+  for (const message of ["日本", "Tokyo, Japan", "I am moving from Japan. What documents do I need?"]) {
+    const fresh = { ...demoCase(), plan: null, profile: profileSchema.parse({}) };
+    const result = await post("chat", { data: fresh, field: "origin", message });
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    assert.match(result.data.profile.origin, /Japan/i, `Origin was not saved for ${message}`);
+    assert.equal(result.data.question.field, "arrival", `Origin was repeated for ${message}`);
+  }
+  const fresh = { ...demoCase(), plan: null, profile: profileSchema.parse({}) };
+  const question = await post("chat", { data: fresh, field: "origin", message: "What documents do I need?" });
+  assert.equal(question.status, 200);
+  assert.equal(question.data.profile.origin, "", "A question alone must not invent an origin.");
+  assert.equal(question.data.question.field, "origin");
+}
 assert.equal((await post("ocr",{consent:true})).status,410);
 const data = demoCase(); data.plan=null;
 assert.equal((await post("plan",{data:{...data,members:data.members.map(member=>({...member,confirmed:false}))}})).status,400);
@@ -26,7 +42,7 @@ if (status.mode === "demo") {
   const defer = await post("chat",{data:unanswered,field:"school",message:"Later",defer:true});assert.equal(defer.status,200);assert.ok(defer.data.profile.deferred.includes("school"));
   const ambiguous = await post("replan",{plan:result.data.plan,message:"Something is delayed 7 days"});assert.ok(ambiguous.data.clarification);assert.equal(ambiguous.data.proposal,undefined);
 }
-console.log("API smoke checks passed; no live AI request was sent.");
+console.log(process.env.RUN_LIVE_CHAT_CHECKS === "1" ? "API smoke and live consultation checks passed." : "API smoke checks passed; no live AI request was sent.");
 
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { searchKnowledge, sourceIds } from "./knowledge";
 import { isAgentKnowledgeId, searchAgentKnowledge } from "./agent-knowledge";
-import { estimateCost, summarizeCosts } from "./planner";
+import { estimateCost, questions, summarizeCosts } from "./planner";
 import type { Plan, ProfileField, RelocationCase } from "./schema";
 
 export function aiEnabled() { return Boolean(process.env.OPENAI_API_KEY?.trim()); }
@@ -25,13 +25,20 @@ async function structured<T>(name: string, schema: z.ZodType<T>, input: unknown)
   if (!output) throw new Error("The AI could not provide a usable response. Please try again.");
   try { return schema.parse(JSON.parse(output)); } catch { throw new Error("The AI response did not pass validation. Please retry."); }
 }
-const chatResult = z.object({ answer: z.string(), value: z.string().nullable(), deferred: z.boolean(), sourceIds: z.array(z.string()) });
+const chatResult = z.object({ answer: z.string(), value: z.string().trim().min(1).nullable(), deferred: z.boolean(), sourceIds: z.array(z.string()) });
 export async function consult(data: RelocationCase, field: ProfileField, message: string) {
   const result = await structured("consultation", chatResult, [{ role: "user", content: JSON.stringify({
     profile: data.profile, members: data.members.filter(member => member.confirmed).map(({ relationship, nationality }) => ({ relationship, nationality })),
     conversation: data.messages.slice(-12).map(({ role, text }) => ({ role, text })),
-    route: data.route, sponsor: data.sponsor, knowledge: [...searchKnowledge(message, data), ...searchAgentKnowledge(message, data)], questionField: field, message,
-    task: "Extract the answer for questionField only. Return value in English, budget as numeric string AED per month, arrival as YYYY-MM-DD. If the user asks a question instead, answer in English using supplied knowledge without inventing a value (value=null). If the user explicitly doesn't know or wants to answer later, deferred=true. Do not repeat already answered questions. Briefly acknowledge extracted answers in English; the interface will show the next missing question. Cite retrieved knowledge IDs when they materially support the answer. Do not quote personal document identifiers.",
+    route: data.route, sponsor: data.sponsor, knowledge: [...searchKnowledge(message, data), ...searchAgentKnowledge(message, data)], questionField: field, currentQuestion: questions.find(question => question.field === field)?.text, message,
+    extractionExamples: [
+      { questionField: "origin", message: "日本", value: "Japan", deferred: false },
+      { questionField: "origin", message: "東京から", value: "Tokyo, Japan", deferred: false },
+      { questionField: "origin", message: "I am moving from Japan. What documents do I need?", value: "Japan", deferred: false },
+      { questionField: "origin", message: "What documents do I need?", value: null, deferred: false },
+      { questionField: "origin", message: "I'd like to answer this later.", value: null, deferred: true },
+    ],
+    task: "The user is responding to currentQuestion in an onboarding form. First extract any explicit answer to questionField from message, even if the message also asks a question. Translate the extracted value into English regardless of the input language; the English-only instruction applies to answer and value, not to rejecting non-English input. For origin, a country alone is sufficient; do not require a city. For example, origin with message 日本 returns value Japan; 東京から returns Tokyo, Japan; I am moving from Japan. What documents do I need? returns Japan and answers the document question using supplied knowledge. Return budget as a numeric string AED per month, arrival as YYYY-MM-DD, and other values as concise non-empty English text. Use value=null only when the user gives no answer to questionField, such as a question alone, a greeting, or an unclear response. Never return an empty or whitespace-only value. Set deferred=true ONLY when the user explicitly says they don't know or wants to skip or answer later; in that case value=null. A question alone is NOT a request to skip: value=null and deferred=false, so currentQuestion stays unanswered. Never infer deferral merely from a missing value. If value is non-null, deferred=false and briefly acknowledge the saved detail in English. Do not ask any onboarding question or repeat currentQuestion: the interface displays the next missing question. If no value can be extracted, answer the user's question in English using supplied knowledge or explain the missing detail. Cite retrieved knowledge IDs when they materially support the answer. Do not quote personal document identifiers.",
   }) }]);
   if (result.sourceIds.some(id => !sourceIds.has(id) && !isAgentKnowledgeId(id))) throw new Error("The AI returned an unknown source. Please retry.");
   return result;
