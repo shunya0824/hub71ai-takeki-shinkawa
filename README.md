@@ -34,7 +34,7 @@ OPENAI_MODEL=gpt-4.1-mini
 
 The OpenAI Responses API uses structured outputs for consultations, plan descriptions, answers, and interpreting requested changes. Without a key, rule-based consultations and plan generation still work, along with answers from knowledge notes retrieved through the app's API. Failed API requests can be retried from the interface.
 
-The key is used only on the server. Requests set `store: false` and exclude passport photos and numbers. Relevant knowledge notes are retrieved from `knowledge/sources.json`. Source references are retained internally while the interface presents concise answers.
+The key is used only on the server. Requests set `store: false` and exclude passport photos and numbers. Relevant knowledge notes are retrieved from `knowledge/sources.json` and `knowledge/Abu-Dhabi-Relocation-Agent-Knowledge-ja.md`. The Markdown body is in English; see its `information_as_of` date. It is a project-provided reference, not a guarantee of current rules or fees. The AI guide replies in Japanese to Japanese questions. Source references are retained internally while the interface presents concise answers.
 
 ## Implemented features
 

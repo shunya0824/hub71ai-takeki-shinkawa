@@ -1,7 +1,10 @@
 import notes from "../knowledge/sources.json";
 import type { RelocationCase } from "./schema";
 export const sources = notes;
-export const sourceIds = new Set<string>(sources.map(source => source.id));
+export const sourceIds = new Set<string>([
+  ...sources.map(source => source.id),
+  ...Array.from({ length: 28 }, (_, index) => `relocation-knowledge-ad-${String(index + 1).padStart(3, "0")}`),
+]);
 export type KnowledgeNote = typeof sources[number];
 
 export function searchKnowledge(question: string, data?: Pick<RelocationCase, "route" | "sponsor">): KnowledgeNote[] {

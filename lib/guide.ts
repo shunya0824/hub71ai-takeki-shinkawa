@@ -1,8 +1,9 @@
 import { searchKnowledge } from "./knowledge";
+import type { AgentKnowledge } from "./agent-knowledge";
 import { blockers, formatDate, money, summarizeCosts } from "./planner";
 import type { RelocationCase } from "./schema";
 
-export function localGuide(data: RelocationCase, message: string) {
+export function localGuide(data: RelocationCase, message: string, reference: AgentKnowledge[] = []) {
   const text = message.trim();
   const base = { answer: "", sourceIds: [] as string[], taskId: null as string | null, days: null as number | null, arrival: null as string | null, budget: null as number | null, housing: null as string | null, school: null as string | null, health: null as string | null };
   const hypothetical = /what if|would|could|can i|どうなる|できますか/i.test(text);
@@ -32,9 +33,14 @@ export function localGuide(data: RelocationCase, message: string) {
     const costs = summarizeCosts(data.plan);
     return { ...base, kind: "answer" as const, answer: `Your moving budget is AED ${money(costs[0].amount)}. Your monthly allocation is AED ${money(costs[1].amount)}.` };
   }
-  const knowledge = searchKnowledge(text, data);
-  const matching = knowledge.filter(note => note.keywords.some(keyword => text.toLowerCase().includes(keyword)));
+  const knowledge = reference.length ? reference : searchKnowledge(text, data);
+  const matching = reference.length ? reference : knowledge.filter(note => note.keywords.some(keyword => text.toLowerCase().includes(keyword.toLowerCase())));
   if (!matching.length) return { ...base, kind: "answer" as const, answer: "I can help with residency, company setup, housing, schools, and getting settled. What would you like to explore?" };
-  if (/fee|price|cost|how much|費用|料金|いくら/i.test(text)) return { ...base, kind: "answer" as const, answer: "Create your plan to see your moving budget and monthly allocation." };
-  return { ...base, kind: "answer" as const, answer: matching.slice(0, 2).map(note => note.summary).join("\n\n"), sourceIds: matching.slice(0, 2).map(note => note.id) };
+  const queryTerms = text.toLocaleLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [];
+  const excerpts = matching.slice(0, 2).map(note => {
+    const paragraphs = note.summary.split(/\n\s*\n/).map(part => part.replace(/^#+\s.*\n/gm, "").replace(/\|/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+    const best = paragraphs.map(paragraph => ({ paragraph, score: queryTerms.filter(term => paragraph.toLocaleLowerCase().includes(term)).length })).sort((a, b) => b.score - a.score)[0]?.paragraph || note.summary;
+    return best.length > 520 ? `${best.slice(0, 517).trimEnd()}…` : best;
+  });
+  return { ...base, kind: "answer" as const, answer: excerpts.join("\n\n"), sourceIds: matching.slice(0, 2).map(note => note.id) };
 }

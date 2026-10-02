@@ -3,6 +3,7 @@ import { caseSchema, dateSchema, planSchema, profileSchema, type ProfileField } 
 import { nextQuestion, generatePlan, validatePlan, replan, refreshPlan, today } from "@/lib/planner";
 import { aiEnabled, askGuide, consult, interpretChange, personalizePlan } from "@/lib/ai";
 import { localGuide } from "@/lib/guide";
+import { searchAgentKnowledge } from "@/lib/agent-knowledge";
 import { failure, limitRequest, readBody } from "@/lib/http";
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -54,7 +55,7 @@ export async function POST(request: Request, context: { params: Promise<{ action
     if (action === "guide") {
       const input = z.object({ data: caseSchema, message: z.string().trim().min(1).max(2000), refresh: z.boolean().optional() }).parse(body);
       if (input.data.plan) validatePlan(input.data.plan);
-      const intent = input.refresh ? { kind: "refresh" as const, answer: "Here's the plan for your updated people.", sourceIds: [] } : aiEnabled() ? await askGuide(input.data, input.message) : localGuide(input.data, input.message);
+      const intent = input.refresh ? { kind: "refresh" as const, answer: "Here's the plan for your updated people.", sourceIds: [] } : aiEnabled() ? await askGuide(input.data, input.message) : localGuide(input.data, input.message, searchAgentKnowledge(input.message, input.data));
       let proposal;
       if (["delay", "arrival", "profile", "refresh"].includes(intent.kind)) {
         if (!input.data.plan) throw new Error("Create your plan before changing it.");
