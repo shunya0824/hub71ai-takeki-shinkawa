@@ -13,7 +13,7 @@ function prepareCanvas(image:HTMLImageElement,area:{x:number;y:number;width:numb
   for(let i=0;i<pixels.data.length;i+=4){let value=Math.max(0,Math.min(255,(pixels.data[i]-low)*255/Math.max(1,high-low)));if(threshold!==undefined)value=value>=threshold?255:0;pixels.data[i]=value;pixels.data[i+1]=value;pixels.data[i+2]=value;}
   context.putImageData(pixels,0,0);return canvas;
 }
-const hasCoreFields=(result:PassportReading)=>!!(result.name&&result.birthDate&&result.expiry);
+const hasCoreFields=(result:PassportReading)=>!!(result.name&&result.nationality&&result.birthDate&&result.expiry);
 export async function readPassportLocally(imageUrl:string,onProgress:(progress:number)=>void):Promise<PassportReading> {
   const {createWorker,PSM}=await import("tesseract.js");
   const image=new Image();image.src=imageUrl;await image.decode();

@@ -1,10 +1,10 @@
 import { dateSchema } from "./schema";
+import { nationalityFromCode, nationalityFromVisualText } from "./nationalities";
 
 export type PassportReading = {
   name: string; nationality: string; passportNumber: string; birthDate: string; expiry: string;
   warnings: string[]; checks: { number: boolean; expiry: boolean; birth: boolean; composite: boolean };
 };
-const countries: Record<string,string> = {JPN:"Japan",GBR:"United Kingdom",USA:"United States",CAN:"Canada",AUS:"Australia",NZL:"New Zealand",CHN:"China",KOR:"South Korea",IND:"India",ARE:"United Arab Emirates",FRA:"France",DEU:"Germany",ITA:"Italy",ESP:"Spain",PRT:"Portugal",NLD:"Netherlands",CHE:"Switzerland",SWE:"Sweden",NOR:"Norway",DNK:"Denmark",FIN:"Finland",IRL:"Ireland",BEL:"Belgium",AUT:"Austria",POL:"Poland",GRC:"Greece",TUR:"Türkiye",SGP:"Singapore",MYS:"Malaysia",IDN:"Indonesia",THA:"Thailand",VNM:"Vietnam",PHL:"Philippines",PAK:"Pakistan",BGD:"Bangladesh",LKA:"Sri Lanka",NPL:"Nepal",SAU:"Saudi Arabia",QAT:"Qatar",KWT:"Kuwait",OMN:"Oman",BHR:"Bahrain",EGY:"Egypt",ZAF:"South Africa",BRA:"Brazil",MEX:"Mexico",ARG:"Argentina",RUS:"Russia",UKR:"Ukraine",UTO:"Utopia"};
 export function mrzCheckDigit(value:string):string {
   return String([...value].reduce((sum,char,index)=>sum+(char==="<"?0:/\d/.test(char)?Number(char):char.charCodeAt(0)-55)*[7,3,1][index%3],0)%10);
 }
@@ -30,6 +30,16 @@ export function parsePassportText(text:string):PassportReading {
   const result:PassportReading={name:"",nationality:"",passportNumber:"",birthDate:"",expiry:"",warnings:[],checks:{number:false,expiry:false,birth:false,composite:false}};
   const nameLine=lines.find(line=>/^P[A-Z<][A-Z<]{3}/.test(line)&&line.includes("<<")&&line.length>=15);
   if(nameLine){const parts=nameLine.slice(5).split("<<");const surname=parts[0].replace(/</g," ").trim();const given=(parts[1]||"").replace(/</g," ").trim();if(surname&&given)result.name=`${given} ${surname}`.replace(/\s+/g," ");}
+  // A nationality has no MRZ check digit. Read its fixed position independently
+  // of date validation; don't infer it from the issuing state in the first line.
+  const nationalityVotes=new Map<string,number>();
+  for(const line of lines){
+    if(line===nameLine||line.length<28||!/[0-9OILSBZG]{6,9}[MF<]/.test(line.slice(13)))continue;
+    const nationality=nationalityFromCode(line.slice(10,13));
+    if(nationality)nationalityVotes.set(nationality,(nationalityVotes.get(nationality)||0)+1);
+  }
+  const ranked=[...nationalityVotes].sort((a,b)=>b[1]-a[1]);
+  if(ranked.length===1||ranked[0]?.[1]>ranked[1]?.[1])result.nationality=ranked[0][0];
   const possible=lines.filter(line=>line.length>=28&&/[A-Z<]{3}[0-9OILSBZG]{7}[MF<][0-9OILSBZG]{7}/.test(line));
   let bestScore=-1;
   for(const original of possible){
@@ -37,11 +47,13 @@ export function parsePassportText(text:string):PassportReading {
     const doc=line.slice(0,9);const number=repairNumber(doc,numeric(line[9]||""));const birth=numeric(line.slice(13,19));const expiry=numeric(line.slice(21,27));
     const checks={number:!!number,expiry:mrzCheckDigit(expiry)===numeric(line[27]||"")&&!!mrzDate(expiry),birth:mrzCheckDigit(birth)===numeric(line[19]||"")&&!!mrzDate(birth,true),composite:line.length===44&&mrzCheckDigit(line.slice(0,10)+line.slice(13,20)+line.slice(21,43))===numeric(line[43])};
     const score=Number(checks.birth)*3+Number(checks.expiry)*3+Number(checks.number)+Number(checks.composite);if(score<=bestScore)continue;bestScore=score;
-    result.checks=checks;result.nationality=countries[code]||result.nationality;result.passportNumber=checks.number?number:"";result.birthDate=checks.birth?mrzDate(birth,true):"";result.expiry=checks.expiry?mrzDate(expiry):"";
+    result.checks=checks;result.passportNumber=checks.number?number:"";result.birthDate=checks.birth?mrzDate(birth,true):"";result.expiry=checks.expiry?mrzDate(expiry):"";
   }
+  if(!result.nationality)result.nationality=nationalityFromVisualText(text);
   // Visual-zone date fallback supports a partial result when the MRZ is cropped or unreadable.
   if(!result.expiry){const match=text.toUpperCase().match(/(?:EXPIRY|EXPIRATION)[\s\S]{0,65}?(\d{1,2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+(20\d{2})/);if(match){const month=String(["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].indexOf(match[2])+1).padStart(2,"0");const date=`${match[3]}-${month}-${match[1].padStart(2,"0")}`;if(dateSchema.safeParse(date).success)result.expiry=date;}}
   if(!result.name)result.warnings.push("Enter the full name.");
+  if(!result.nationality)result.warnings.push("Select the nationality.");
   if(!result.birthDate)result.warnings.push("Check the date of birth.");
   if(!result.expiry)result.warnings.push("Check the expiry date.");
   return result;
