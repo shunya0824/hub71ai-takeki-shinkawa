@@ -16,6 +16,9 @@ export function formatDate(date: string, year = false): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 }
 export function money(value: number): string { return new Intl.NumberFormat("en-GB").format(value); }
+export function estimateCost(cost: PlanTask["cost"]): number | null {
+  return cost.min === null || cost.max === null ? null : Math.round((cost.min + cost.max) / 2);
+}
 export function validatePlan(input: Plan): Plan {
   const plan = planSchema.parse(input);
   const ids = new Set(plan.tasks.map(task => task.id));
@@ -45,7 +48,7 @@ export function blockers(task: PlanTask, plan: Plan): PlanTask[] {
 export function summarizeCosts(plan: Plan) {
   return (["once", "monthly"] as const).map(frequency => {
     const tasks = plan.tasks.filter(task => task.cost.frequency === frequency);
-    return { frequency, min: tasks.reduce((sum, task) => sum + (task.cost.min ?? 0), 0), max: tasks.reduce((sum, task) => sum + (task.cost.max ?? 0), 0), unknown: tasks.filter(task => task.cost.min === null).length };
+    return { frequency, amount: tasks.reduce((sum, task) => sum + (estimateCost(task.cost) ?? 0), 0), min: tasks.reduce((sum, task) => sum + (task.cost.min ?? 0), 0), max: tasks.reduce((sum, task) => sum + (task.cost.max ?? 0), 0), unknown: tasks.filter(task => task.cost.min === null).length };
   });
 }
 export function generatePlan(data: RelocationCase): Plan {

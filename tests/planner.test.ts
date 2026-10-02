@@ -63,14 +63,16 @@ test("invalid references, cycles, chronology and calendar dates are rejected", (
   const reversed = structuredClone(plan); reversed.tasks[0].start = addDays(reversed.tasks[0].due, 1);
   assert.throws(() => validatePlan(reversed), /end before/);
 });
-test("unconfirmed cost ranges stay counted as unknown, with monthly and one-time sums separate", () => {
+test("single cost totals preserve separate monthly and one-time budgets without pricing unknown fees", () => {
   const costs = summarizeCosts(demoCase().plan!);
   assert.equal(costs[0].frequency, "once");
   assert.equal(costs[0].min, 2800);
   assert.equal(costs[0].max, 5300);
   assert.equal(costs[0].unknown, 6);
+  assert.equal(costs[0].amount, 4050);
   assert.equal(costs[1].min, 6660);
   assert.equal(costs[1].max, 9720);
+  assert.equal(costs[1].amount, 8190);
 });
 test("saved cases and planning requests exclude passport numbers; completion survives a reload", () => {
   const data = demoCase();

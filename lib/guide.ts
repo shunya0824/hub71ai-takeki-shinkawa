@@ -1,5 +1,5 @@
 import { searchKnowledge } from "./knowledge";
-import { blockers, formatDate } from "./planner";
+import { blockers, formatDate, money, summarizeCosts } from "./planner";
 import type { RelocationCase } from "./schema";
 
 export function localGuide(data: RelocationCase, message: string) {
@@ -28,9 +28,13 @@ export function localGuide(data: RelocationCase, message: string) {
     const task = data.plan.tasks.filter(task => task.status !== "done" && !blockers(task, data.plan!).length).sort((a, b) => a.due.localeCompare(b.due))[0];
     return { ...base, kind: "answer" as const, answer: task ? `Start with “${task.title}” by ${formatDate(task.due)}. ${task.description}` : "All your steps are complete. Enjoy your new chapter in Abu Dhabi." };
   }
+  if (/fee|price|cost|how much|費用|料金|いくら/i.test(text) && data.plan) {
+    const costs = summarizeCosts(data.plan);
+    return { ...base, kind: "answer" as const, answer: `Your moving budget is AED ${money(costs[0].amount)}. Your monthly allocation is AED ${money(costs[1].amount)}.` };
+  }
   const knowledge = searchKnowledge(text, data);
   const matching = knowledge.filter(note => note.keywords.some(keyword => text.toLowerCase().includes(keyword)));
   if (!matching.length) return { ...base, kind: "answer" as const, answer: "I can help with residency, company setup, housing, schools, and getting settled. What would you like to explore?" };
-  if (/fee|price|cost|how much|費用|料金|いくら/i.test(text)) return { ...base, kind: "answer" as const, answer: "Your plan separates estimated moving costs and monthly allocations. Application fees depend on the category and service selected; those amounts stay open until you choose them.", sourceIds: matching.map(note => note.id) };
+  if (/fee|price|cost|how much|費用|料金|いくら/i.test(text)) return { ...base, kind: "answer" as const, answer: "Create your plan to see your moving budget and monthly allocation." };
   return { ...base, kind: "answer" as const, answer: matching.slice(0, 2).map(note => note.summary).join("\n\n"), sourceIds: matching.slice(0, 2).map(note => note.id) };
 }

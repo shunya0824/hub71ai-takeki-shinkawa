@@ -16,4 +16,5 @@ test("guide distinguishes questions, explicit changes and unclear changes",()=>{
   const delay=localGuide(data,"My documents will be 7 days late.");assert.equal(delay.kind,"delay");assert.equal(delay.taskId,"documents");assert.equal(delay.days,7);
   assert.equal(localGuide(data,"Something is delayed 7 days").kind,"clarify");
   const budget=localGuide(data,"Change my budget to AED 12,000");assert.equal(budget.kind,"profile");assert.equal(budget.budget,12000);
+  const costs=localGuide(data,"How much will my move cost?");assert.equal(costs.kind,"answer");assert.equal(costs.answer,"Your moving budget is AED 4,050. Your monthly allocation is AED 8,190.");
 });
